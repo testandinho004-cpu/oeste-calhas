@@ -1,0 +1,150 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String    @id @default(cuid())
+  email     String    @unique
+  name      String?
+  blocked   Boolean   @default(false) // admin pode bloquear abusadores direto no banco
+  createdAt DateTime  @default(now())
+  bookings  Booking[]
+  customer  Customer?
+}
+
+model Booking {
+  id                 String               @id @default(cuid())
+  userId             String?
+  user               User?                @relation(fields: [userId], references: [id])
+  customerId         String?
+  customer           Customer?            @relation(fields: [customerId], references: [id])
+  startsAt           DateTime
+  // "2026-03-10T11" enquanto ativo; NULL quando cancelado. UNIQUE = impossível haver 2 agendamentos no mesmo horário.
+  slotKey            String?              @unique
+  durationMinutes    Int                  @default(60)
+  name               String
+  phone              String
+  address            String
+  description        String
+  status             String               @default("PENDING") // PENDING | CONFIRMED | IN_PROGRESS | DONE | CANCELLED | NO_SHOW
+  source             String               @default("PUBLIC") // PUBLIC | ADMIN
+  internalNotes      String?
+  cancellationReason String?
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @default(now()) @updatedAt
+  reservations       BookingReservation[]
+
+  @@index([userId])
+  @@index([customerId])
+  @@index([startsAt])
+  @@index([status, startsAt])
+}
+
+model Customer {
+  id            String    @id @default(cuid())
+  userId        String?   @unique
+  user          User?     @relation(fields: [userId], references: [id])
+  name          String?
+  email         String?   @unique
+  phone         String?   @unique
+  internalNotes String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  bookings      Booking[]
+}
+
+model WeeklyAvailability {
+  id      Int                        @id @default(autoincrement())
+  weekday Int                        @unique
+  enabled Boolean                    @default(false)
+  periods WeeklyAvailabilityPeriod[]
+}
+
+model WeeklyAvailabilityPeriod {
+  id         Int                @id @default(autoincrement())
+  scheduleId Int
+  schedule   WeeklyAvailability @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  opensAt    String
+  closesAt   String
+
+  @@index([scheduleId])
+}
+
+model AvailabilityException {
+  id        Int                           @id @default(autoincrement())
+  dateKey   String                        @unique
+  kind      String // BLOCK | CUSTOM
+  reason    String?
+  periods   AvailabilityExceptionPeriod[]
+  createdAt DateTime                      @default(now())
+  updatedAt DateTime                      @updatedAt
+}
+
+model AvailabilityExceptionPeriod {
+  id          Int                   @id @default(autoincrement())
+  exceptionId Int
+  exception   AvailabilityException @relation(fields: [exceptionId], references: [id], onDelete: Cascade)
+  opensAt     String
+  closesAt    String
+
+  @@index([exceptionId])
+}
+
+model BookingPolicy {
+  id                      Int      @id @default(1)
+  minimumLeadHours        Int      @default(12)
+  maximumDaysAhead        Int      @default(30)
+  slotGranularityMinutes  Int      @default(60)
+  simultaneousCapacity    Int      @default(1)
+  cancellationCutoffHours Int      @default(0)
+  updatedAt               DateTime @updatedAt
+}
+
+model BookingReservation {
+  id          Int      @id @default(autoincrement())
+  bookingId   String
+  booking     Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  resourceKey String   @default("company")
+  slotStart   DateTime
+
+  @@unique([resourceKey, slotStart])
+  @@index([bookingId])
+}
+
+model AuditLog {
+  id             Int      @id @default(autoincrement())
+  actor          String   @default("admin")
+  action         String
+  entity         String
+  entityId       String?
+  description    String
+  previousValues String?
+  newValues      String?
+  result         String   @default("SUCCESS")
+  createdAt      DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([action, createdAt])
+  @@index([entity, entityId])
+}
+
+model CompanySettings {
+  id                  Int      @id @default(1)
+  name                String   @default("Oeste Calhas")
+  phone               String?
+  email               String?
+  address             String?
+  logoUrl             String?
+  primaryColor        String   @default("#193a2a")
+  theme               String   @default("light")
+  timezone            String   @default("America/Recife")
+  cancellationPolicy  String?
+  bookingPolicy       String?
+  updatedAt           DateTime @updatedAt
+}
+
